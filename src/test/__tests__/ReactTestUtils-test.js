@@ -62,15 +62,15 @@ describe('ReactTestUtils', function() {
 
     var shallowRenderer = ReactTestUtils.createRenderer();
     expect(() => shallowRenderer.render(SomeComponent)).toThrow(
-      'Invariant Violation: ReactShallowRenderer render(): Invalid component ' +
-      'element. Instead of passing a component class, make sure to ' +
-      'instantiate it by passing it to React.createElement.'
+      'ReactShallowRenderer render(): Invalid component element. Instead of ' +
+      'passing a component class, make sure to instantiate it by passing it ' +
+      'to React.createElement.'
     );
     expect(() => shallowRenderer.render(<div />)).toThrow(
-      'Invariant Violation: ReactShallowRenderer render(): Shallow rendering ' +
-      'works only with custom components, not primitives (div). Instead of ' +
-      'calling `.render(el)` and inspecting the rendered output, look at ' +
-      '`el.props` directly instead.'
+      'ReactShallowRenderer render(): Shallow rendering works only with ' +
+      'custom components, not primitives (div). Instead of calling ' +
+      '`.render(el)` and inspecting the rendered output, look at `el.props` ' +
+      'directly instead.'
     );
   });
 
@@ -158,6 +158,21 @@ describe('ReactTestUtils', function() {
     var updatedResultCausedByClick = shallowRenderer.getRenderOutput();
     expect(updatedResultCausedByClick.type).toBe('a');
     expect(updatedResultCausedByClick.props.className).toBe('was-clicked');
+  });
+
+  it('can access the mounted component instance', function() {
+    var SimpleComponent = React.createClass({
+      someMethod: function() {
+        return this.props.n;
+      },
+      render: function() {
+        return <div>{this.props.n}</div>;
+      },
+    });
+
+    var shallowRenderer = ReactTestUtils.createRenderer();
+    shallowRenderer.render(<SimpleComponent n={5} />);
+    expect(shallowRenderer.getMountedInstance().someMethod()).toEqual(5);
   });
 
   it('can shallowly render components with contextTypes', function() {

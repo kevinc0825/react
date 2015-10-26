@@ -15,6 +15,7 @@ var ReactComponentEnvironment = require('ReactComponentEnvironment');
 var ReactCurrentOwner = require('ReactCurrentOwner');
 var ReactElement = require('ReactElement');
 var ReactInstanceMap = require('ReactInstanceMap');
+var ReactNodeTypes = require('ReactNodeTypes');
 var ReactPerf = require('ReactPerf');
 var ReactPropTypeLocations = require('ReactPropTypeLocations');
 var ReactPropTypeLocationNames = require('ReactPropTypeLocationNames');
@@ -96,6 +97,8 @@ var ReactCompositeComponentMixin = {
     this._currentElement = element;
     this._rootNodeID = null;
     this._instance = null;
+    this._nativeParent = null;
+    this._nativeContainerInfo = null;
 
     // See ReactUpdateQueue
     this._pendingElement = null;
@@ -103,6 +106,7 @@ var ReactCompositeComponentMixin = {
     this._pendingReplaceState = false;
     this._pendingForceUpdate = false;
 
+    this._renderedNodeType = null;
     this._renderedComponent = null;
 
     this._context = null;
@@ -122,10 +126,18 @@ var ReactCompositeComponentMixin = {
    * @final
    * @internal
    */
-  mountComponent: function(rootID, transaction, context) {
+  mountComponent: function(
+    rootID,
+    transaction,
+    nativeParent,
+    nativeContainerInfo,
+    context
+  ) {
     this._context = context;
     this._mountOrder = nextMountID++;
     this._rootNodeID = rootID;
+    this._nativeParent = nativeParent;
+    this._nativeContainerInfo = nativeContainerInfo;
 
     var publicProps = this._processProps(this._currentElement.props);
     var publicContext = this._processContext(context);
@@ -280,6 +292,7 @@ var ReactCompositeComponentMixin = {
       renderedElement = this._renderValidatedComponent();
     }
 
+    this._renderedNodeType = ReactNodeTypes.getType(renderedElement);
     this._renderedComponent = this._instantiateReactComponent(
       renderedElement
     );
@@ -288,6 +301,8 @@ var ReactCompositeComponentMixin = {
       this._renderedComponent,
       rootID,
       transaction,
+      nativeParent,
+      nativeContainerInfo,
       this._processChildContext(context)
     );
     if (inst.componentDidMount) {
@@ -295,6 +310,10 @@ var ReactCompositeComponentMixin = {
     }
 
     return markup;
+  },
+
+  getNativeNode: function() {
+    return ReactReconciler.getNativeNode(this._renderedComponent);
   },
 
   /**
@@ -311,6 +330,7 @@ var ReactCompositeComponentMixin = {
     }
 
     ReactReconciler.unmountComponent(this._renderedComponent);
+    this._renderedNodeType = null;
     this._renderedComponent = null;
     this._instance = null;
 
@@ -727,30 +747,39 @@ var ReactCompositeComponentMixin = {
         this._processChildContext(context)
       );
     } else {
-      // These two IDs are actually the same! But nothing should rely on that.
-      var thisID = this._rootNodeID;
-      var prevComponentID = prevComponentInstance._rootNodeID;
+      // TODO: This is currently necessary due to the unfortunate caching
+      // that ReactMount does which makes it exceedingly difficult to unmount
+      // a set of siblings without accidentally repopulating the node cache (see
+      // #5151). Once ReactMount no longer stores the nodes by ID, this method
+      // can go away.
+      var oldNativeNode = ReactReconciler.getNativeNode(prevComponentInstance);
+
       ReactReconciler.unmountComponent(prevComponentInstance);
 
+      this._renderedNodeType = ReactNodeTypes.getType(nextRenderedElement);
       this._renderedComponent = this._instantiateReactComponent(
         nextRenderedElement
       );
       var nextMarkup = ReactReconciler.mountComponent(
         this._renderedComponent,
-        thisID,
+        this._rootNodeID,
         transaction,
+        this._nativeParent,
+        this._nativeContainerInfo,
         this._processChildContext(context)
       );
-      this._replaceNodeWithMarkupByID(prevComponentID, nextMarkup);
+      this._replaceNodeWithMarkup(oldNativeNode, nextMarkup);
     }
   },
 
   /**
+   * Overridden in shallow rendering.
+   *
    * @protected
    */
-  _replaceNodeWithMarkupByID: function(prevComponentID, nextMarkup) {
-    ReactComponentEnvironment.replaceNodeWithMarkupByID(
-      prevComponentID,
+  _replaceNodeWithMarkup: function(oldNativeNode, nextMarkup) {
+    ReactComponentEnvironment.replaceNodeWithMarkup(
+      oldNativeNode,
       nextMarkup
     );
   },

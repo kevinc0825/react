@@ -35,8 +35,8 @@ string type
 
 ## Event pooling
 
-The `SyntheticEvent` is pooled. This means that the `SyntheticEvent` object will be reused and all properties will be nullified after the event callback has been invoked.  
-This is for performance reasons.  
+The `SyntheticEvent` is pooled. This means that the `SyntheticEvent` object will be reused and all properties will be nullified after the event callback has been invoked.
+This is for performance reasons.
 As such, you cannot access the event in an asynchronous way.
 
 ```javascript
@@ -82,6 +82,22 @@ DOMDataTransfer clipboardData
 ```
 
 
+### Composition Events
+
+Event names:
+
+```
+onCompositionEnd onCompositionStart onCompositionUpdate
+```
+
+Properties:
+
+```javascript
+string data
+
+```
+
+
 ### Keyboard Events
 
 Event names:
@@ -122,6 +138,7 @@ Properties:
 DOMEventTarget relatedTarget
 ```
 
+These focus events work on all elements in the React DOM, not just form elements.
 
 ### Form Events
 
@@ -163,6 +180,15 @@ DOMEventTarget relatedTarget
 number screenX
 number screenY
 boolean shiftKey
+```
+
+
+### Selection events
+
+Event names:
+
+```
+onSelect
 ```
 
 

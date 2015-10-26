@@ -11,8 +11,10 @@
 
 'use strict';
 
+var ClientReactRootIndex = require('ClientReactRootIndex');
 var EventConstants = require('EventConstants');
 var EventPluginHub = require('EventPluginHub');
+var EventPluginRegistry = require('EventPluginRegistry');
 var EventPropagators = require('EventPropagators');
 var React = require('React');
 var ReactDOM = require('ReactDOM');
@@ -98,8 +100,6 @@ var ReactTestUtils = {
   },
 
   isDOMComponent: function(inst) {
-    // TODO: Fix this heuristic. It's just here because composites can currently
-    // pretend to be DOM components.
     return !!(inst && inst.nodeType === 1 && inst.tagName);
   },
 
@@ -185,9 +185,14 @@ var ReactTestUtils = {
     }
     return ReactTestUtils.findAllInRenderedTree(root, function(inst) {
       if (ReactTestUtils.isDOMComponent(inst)) {
-        var classList = ReactDOM.findDOMNode(inst).className.split(/\s+/);
-        return classNames.every(function(className) {
-          return classList.indexOf(className) !== -1;
+        var className = inst.className;
+        if (typeof className !== 'string') {
+          // SVG, probably.
+          className = inst.getAttribute('class') || '';
+        }
+        var classList = className.split(/\s+/);
+        return classNames.every(function(name) {
+          return classList.indexOf(name) !== -1;
         });
       }
       return false;
@@ -233,7 +238,9 @@ var ReactTestUtils = {
   findRenderedDOMComponentWithTag: function(root, tagName) {
     var all = ReactTestUtils.scryRenderedDOMComponentsWithTag(root, tagName);
     if (all.length !== 1) {
-      throw new Error('Did not find exactly one match for tag:' + tagName);
+      throw new Error('Did not find exactly one match ' +
+        '(found ' + all.length + ') for tag:' + tagName
+      );
     }
     return all[0];
   },
@@ -363,6 +370,10 @@ ReactShallowRenderer.prototype.getRenderOutput = function() {
   );
 };
 
+ReactShallowRenderer.prototype.getMountedInstance = function() {
+  return this._instance ? this._instance._instance : null;
+};
+
 var NoopInternalComponent = function(element) {
   this._renderedOutput = element;
   this._currentElement = element;
@@ -378,6 +389,10 @@ NoopInternalComponent.prototype = {
     this._currentElement = element;
   },
 
+  getNativeNode: function() {
+    return undefined;
+  },
+
   unmountComponent: function() {
   },
 
@@ -390,7 +405,7 @@ assign(
     _instantiateReactComponent: function(element) {
       return new NoopInternalComponent(element);
     },
-    _replaceNodeWithMarkupByID: function() {},
+    _replaceNodeWithMarkup: function() {},
     _renderValidatedComponent:
       ReactCompositeComponent.Mixin
         ._renderValidatedComponentWithoutOwnerOrContext,
@@ -432,11 +447,13 @@ ReactShallowRenderer.prototype._render = function(element, transaction, context)
   if (this._instance) {
     this._instance.receiveComponent(element, transaction, context);
   } else {
-    var rootID = ReactInstanceHandles.createReactRootID();
+    var rootID = ReactInstanceHandles.createReactRootID(
+      ClientReactRootIndex.createReactRootIndex()
+    );
     var instance = new ShallowComponentWrapper(element.type);
     instance.construct(element);
 
-    instance.mountComponent(rootID, transaction, context);
+    instance.mountComponent(rootID, transaction, null, null, context);
 
     this._instance = instance;
   }
@@ -460,7 +477,7 @@ function makeSimulator(eventType) {
     }
 
     var dispatchConfig =
-      ReactBrowserEventEmitter.eventNameDispatchConfigs[eventType];
+      EventPluginRegistry.eventNameDispatchConfigs[eventType];
 
     var fakeNativeEvent = new Event();
     fakeNativeEvent.target = node;
@@ -491,7 +508,7 @@ function buildSimulators() {
   ReactTestUtils.Simulate = {};
 
   var eventType;
-  for (eventType in ReactBrowserEventEmitter.eventNameDispatchConfigs) {
+  for (eventType in EventPluginRegistry.eventNameDispatchConfigs) {
     /**
      * @param {!Element|ReactDOMComponent} domComponentOrNode
      * @param {?object} eventData Fake event data to use in SyntheticEvent.

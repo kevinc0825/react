@@ -18,13 +18,31 @@ var ReactUpdates = require('ReactUpdates');
 
 var assign = require('Object.assign');
 var invariant = require('invariant');
+var warning = require('warning');
 
 var instancesByReactID = {};
+
+var didWarnValueLink = false;
+var didWarnCheckedLink = false;
+var didWarnValueNull = false;
 
 function forceUpdateIfMounted() {
   if (this._rootNodeID) {
     // DOM component is still mounted; update
     ReactDOMInput.updateWrapper(this);
+  }
+}
+
+function warnIfValueIsNull(props) {
+  if (props != null && props.value === null && !didWarnValueNull) {
+    warning(
+      false,
+      '`value` prop on `input` should not be null. ' +
+      'Consider using the empty string to clear the component or `undefined` ' +
+      'for uncontrolled components.'
+    );
+
+    didWarnValueNull = true;
   }
 }
 
@@ -45,7 +63,7 @@ function forceUpdateIfMounted() {
  * @see http://www.w3.org/TR/2012/WD-html5-20121025/the-input-element.html
  */
 var ReactDOMInput = {
-  getNativeProps: function(inst, props, context) {
+  getNativeProps: function(inst, props) {
     var value = LinkedValueUtils.getValue(props);
     var checked = LinkedValueUtils.getChecked(props);
 
@@ -67,12 +85,29 @@ var ReactDOMInput = {
         props,
         inst._currentElement._owner
       );
+
+      if (props.valueLink !== undefined && !didWarnValueLink) {
+        warning(
+          false,
+          '`valueLink` prop on `input` is deprecated; set `value` and `onChange` instead.'
+        );
+        didWarnValueLink = true;
+      }
+      if (props.checkedLink !== undefined && !didWarnCheckedLink) {
+        warning(
+          false,
+          '`checkedLink` prop on `input` is deprecated; set `value` and `onChange` instead.'
+        );
+        didWarnCheckedLink = true;
+      }
+      warnIfValueIsNull(props);
     }
 
     var defaultValue = props.defaultValue;
     inst._wrapperState = {
       initialChecked: props.defaultChecked || false,
       initialValue: defaultValue != null ? defaultValue : null,
+      listeners: null,
       onChange: _handleChange.bind(inst),
     };
   },
@@ -88,6 +123,10 @@ var ReactDOMInput = {
 
   updateWrapper: function(inst) {
     var props = inst._currentElement.props;
+
+    if (__DEV__) {
+      warnIfValueIsNull(props);
+    }
 
     // TODO: Shouldn't this be getChecked(props)?
     var checked = props.checked;

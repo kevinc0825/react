@@ -11,6 +11,9 @@
 
 'use strict';
 
+require('mock-modules')
+  .mock('ServerReactRootIndex');
+
 var React;
 var ReactDOM;
 var ReactDOMServer;
@@ -22,7 +25,7 @@ var getTestDocument;
 var testDocument;
 
 var UNMOUNT_INVARIANT_MESSAGE =
-  'Invariant Violation: <html> tried to unmount. ' +
+  '<html> tried to unmount. ' +
   'Because of cross-browser quirks it is impossible to unmount some ' +
   'top-level components (eg <html>, <head>, and <body>) reliably and ' +
   'efficiently. To fix this, have a single top-level component that ' +
@@ -31,6 +34,14 @@ var UNMOUNT_INVARIANT_MESSAGE =
 describe('rendering React components at document', function() {
   beforeEach(function() {
     require('mock-modules').dumpCache();
+
+    // Negative integer creator. So they won't get confused with
+    // the Client positive ids.
+    var ServerReactRootIndex = require('ServerReactRootIndex');
+    var serverId = -1;
+    ServerReactRootIndex.createReactRootIndex.mockImplementation(function() {
+      return serverId--;
+    });
 
     React = require('React');
     ReactDOM = require('ReactDOM');
@@ -204,7 +215,6 @@ describe('rendering React components at document', function() {
       // Notice the text is different!
       ReactDOM.render(<Component text="Hello world" />, testDocument);
     }).toThrow(
-      'Invariant Violation: ' +
       'You\'re trying to render a component to the document using ' +
       'server rendering but the checksum was invalid. This usually ' +
       'means you rendered a different component type or props on ' +
@@ -213,8 +223,8 @@ describe('rendering React components at document', function() {
       'quirks by rendering at the document root. You should look for ' +
       'environment dependent code in your components and ensure ' +
       'the props are the same client and server side:\n' +
-      ' (client) data-reactid=".0.1">Hello world</body></\n' +
-      ' (server) data-reactid=".0.1">Goodbye world</body>'
+      ' (client) ata-reactid=".-1.1">Hello world</body></\n' +
+      ' (server) ata-reactid=".-1.1">Goodbye world</body>'
     );
   });
 
@@ -241,9 +251,9 @@ describe('rendering React components at document', function() {
     expect(function() {
       ReactDOM.render(<Component />, container);
     }).toThrow(
-      'Invariant Violation: You\'re trying to render a component to the ' +
-      'document but you didn\'t use server rendering. We can\'t do this ' +
-      'without using server rendering due to cross-browser quirks. See ' +
+      'You\'re trying to render a component to the document but you didn\'t ' +
+      'use server rendering. We can\'t do this without using server ' +
+      'rendering due to cross-browser quirks. See ' +
       'ReactDOMServer.renderToString() for server rendering.'
     );
   });

@@ -13,6 +13,7 @@
 'use strict';
 
 var DOMChildrenOperations = require('DOMChildrenOperations');
+var DOMLazyTree = require('DOMLazyTree');
 var DOMPropertyOperations = require('DOMPropertyOperations');
 var ReactComponentBrowserEnvironment =
   require('ReactComponentBrowserEnvironment');
@@ -22,6 +23,14 @@ var assign = require('Object.assign');
 var escapeTextContentForBrowser = require('escapeTextContentForBrowser');
 var setTextContent = require('setTextContent');
 var validateDOMNesting = require('validateDOMNesting');
+
+function getNode(inst) {
+  if (inst._nativeNode) {
+    return inst._nativeNode;
+  } else {
+    return inst._nativeNode = ReactMount.getNode(inst._rootNodeID);
+  }
+}
 
 /**
  * Text nodes violate a couple assumptions that React makes about components:
@@ -52,6 +61,7 @@ assign(ReactDOMTextComponent.prototype, {
     // TODO: This is really a ReactText (ReactNode), not a ReactElement
     this._currentElement = text;
     this._stringText = '' + text;
+    this._nativeNode = null;
 
     // Properties
     this._rootNodeID = null;
@@ -67,26 +77,37 @@ assign(ReactDOMTextComponent.prototype, {
    * @return {string} Markup for this text node.
    * @internal
    */
-  mountComponent: function(rootID, transaction, context) {
+  mountComponent: function(
+    rootID,
+    transaction,
+    nativeParent,
+    nativeContainerInfo,
+    context
+  ) {
     if (__DEV__) {
-      if (context[validateDOMNesting.ancestorInfoContextKey]) {
-        validateDOMNesting(
-          'span',
-          null,
-          context[validateDOMNesting.ancestorInfoContextKey]
-        );
+      var parentInfo;
+      if (nativeParent != null) {
+        parentInfo = nativeParent._ancestorInfo;
+      } else if (nativeContainerInfo != null) {
+        parentInfo = nativeContainerInfo._ancestorInfo;
+      }
+      if (parentInfo) {
+        // parentInfo should always be present except for the top-level
+        // component when server rendering
+        validateDOMNesting('span', this, parentInfo);
       }
     }
 
     this._rootNodeID = rootID;
     if (transaction.useCreateElement) {
-      var ownerDocument = context[ReactMount.ownerDocumentContextKey];
+      var ownerDocument = nativeContainerInfo._ownerDocument;
       var el = ownerDocument.createElement('span');
+      this._nativeNode = el;
       DOMPropertyOperations.setAttributeForID(el, rootID);
       // Populate node cache
       ReactMount.getID(el);
       setTextContent(el, this._stringText);
-      return el;
+      return DOMLazyTree(el);
     } else {
       var escapedText = escapeTextContentForBrowser(this._stringText);
 
@@ -121,13 +142,17 @@ assign(ReactDOMTextComponent.prototype, {
         // and/or updateComponent to do the actual update for consistency with
         // other component types?
         this._stringText = nextStringText;
-        var node = ReactMount.getNode(this._rootNodeID);
-        DOMChildrenOperations.updateTextContent(node, nextStringText);
+        DOMChildrenOperations.updateTextContent(getNode(this), nextStringText);
       }
     }
   },
 
+  getNativeNode: function() {
+    return getNode(this);
+  },
+
   unmountComponent: function() {
+    this._nativeNode = null;
     ReactComponentBrowserEnvironment.unmountIDFromEnvironment(this._rootNodeID);
   },
 

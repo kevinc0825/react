@@ -11,28 +11,26 @@
 
 'use strict';
 
+var ClientReactRootIndex = require('ClientReactRootIndex');
+var DOMLazyTree = require('DOMLazyTree');
 var DOMProperty = require('DOMProperty');
 var ReactBrowserEventEmitter = require('ReactBrowserEventEmitter');
 var ReactCurrentOwner = require('ReactCurrentOwner');
-var ReactDOMFeatureFlags = require('ReactDOMFeatureFlags');
+var ReactDOMContainerInfo = require('ReactDOMContainerInfo');
 var ReactElement = require('ReactElement');
-var ReactEmptyComponentRegistry = require('ReactEmptyComponentRegistry');
 var ReactInstanceHandles = require('ReactInstanceHandles');
-var ReactInstanceMap = require('ReactInstanceMap');
 var ReactMarkupChecksum = require('ReactMarkupChecksum');
 var ReactPerf = require('ReactPerf');
 var ReactReconciler = require('ReactReconciler');
 var ReactUpdateQueue = require('ReactUpdateQueue');
 var ReactUpdates = require('ReactUpdates');
 
-var assign = require('Object.assign');
 var emptyObject = require('emptyObject');
 var containsNode = require('containsNode');
 var instantiateReactComponent = require('instantiateReactComponent');
 var invariant = require('invariant');
 var setInnerHTML = require('setInnerHTML');
 var shouldUpdateReactComponent = require('shouldUpdateReactComponent');
-var validateDOMNesting = require('validateDOMNesting');
 var warning = require('warning');
 
 var ATTR_NAME = DOMProperty.ID_ATTRIBUTE_NAME;
@@ -41,9 +39,6 @@ var nodeCache = {};
 var ELEMENT_NODE_TYPE = 1;
 var DOC_NODE_TYPE = 9;
 var DOCUMENT_FRAGMENT_NODE_TYPE = 11;
-
-var ownerDocumentContextKey =
-  '__ReactMount_ownerDocument$' + Math.random().toString(36).slice(2);
 
 
 /** Mapping from reactRootID to React component instance. */
@@ -99,7 +94,7 @@ function getReactRootElementInContainer(container) {
  */
 function getReactRootID(container) {
   var rootElement = getReactRootElementInContainer(container);
-  return rootElement && ReactMount.getID(rootElement);
+  return rootElement && internalGetID(rootElement);
 }
 
 /**
@@ -115,20 +110,15 @@ function getReactRootID(container) {
 function getID(node) {
   var id = internalGetID(node);
   if (id) {
-    if (nodeCache.hasOwnProperty(id)) {
-      var cached = nodeCache[id];
-      if (cached !== node) {
-        invariant(
-          !isValid(cached, id),
-          'ReactMount: Two valid but unequal nodes with the same `%s`: %s',
-          ATTR_NAME, id
-        );
-
-        nodeCache[id] = node;
-      }
-    } else {
-      nodeCache[id] = node;
-    }
+    var cached = nodeCache[id];
+    // TODO: Fix this whole concept of "validity" -- the cache just shouldn't
+    // have nodes that have been unmounted.
+    invariant(
+      !cached || cached === node || !isValid(cached, id),
+      'ReactMount: Two valid but unequal nodes with the same `%s`: %s',
+      ATTR_NAME, id
+    );
+    nodeCache[id] = node;
   }
 
   return id;
@@ -157,6 +147,18 @@ function setID(node, id) {
 }
 
 /**
+ * Finds the node with the supplied ID if present in the cache.
+ */
+function getNodeIfCached(id) {
+  var node = nodeCache[id];
+  // TODO: Fix this whole concept of "validity" -- the cache just shouldn't have
+  // nodes that have been unmounted.
+  if (node && isValid(node, id)) {
+    return node;
+  }
+}
+
+/**
  * Finds the node with the supplied React-generated DOM ID.
  *
  * @param {string} id A React-generated DOM ID.
@@ -164,28 +166,12 @@ function setID(node, id) {
  * @internal
  */
 function getNode(id) {
-  if (!nodeCache.hasOwnProperty(id) || !isValid(nodeCache[id], id)) {
-    nodeCache[id] = ReactMount.findReactNodeByID(id);
+  var node = getNodeIfCached(id);
+  if (node) {
+    return node;
+  } else {
+    return nodeCache[id] = ReactMount.findReactNodeByID(id);
   }
-  return nodeCache[id];
-}
-
-/**
- * Finds the node with the supplied public React instance.
- *
- * @param {*} instance A public React instance.
- * @return {?DOMElement} DOM node with the suppled `id`.
- * @internal
- */
-function getNodeFromInstance(instance) {
-  var id = ReactInstanceMap.get(instance)._rootNodeID;
-  if (ReactEmptyComponentRegistry.isNullComponentID(id)) {
-    return null;
-  }
-  if (!nodeCache.hasOwnProperty(id) || !isValid(nodeCache[id], id)) {
-    nodeCache[id] = ReactMount.findReactNodeByID(id);
-  }
-  return nodeCache[id];
 }
 
 /**
@@ -226,8 +212,8 @@ function purgeID(id) {
 
 var deepestNodeSoFar = null;
 function findDeepestCachedAncestorImpl(ancestorID) {
-  var ancestor = nodeCache[ancestorID];
-  if (ancestor && isValid(ancestor, ancestorID)) {
+  var ancestor = getNodeIfCached(ancestorID);
+  if (ancestor) {
     deepestNodeSoFar = ancestor;
   } else {
     // This node isn't populated in the cache, so presumably none of its
@@ -268,24 +254,13 @@ function mountComponentIntoNode(
   shouldReuseMarkup,
   context
 ) {
-  if (ReactDOMFeatureFlags.useCreateElement) {
-    context = assign({}, context);
-    if (container.nodeType === DOC_NODE_TYPE) {
-      context[ownerDocumentContextKey] = container;
-    } else {
-      context[ownerDocumentContextKey] = container.ownerDocument;
-    }
-  }
-  if (__DEV__) {
-    if (context === emptyObject) {
-      context = {};
-    }
-    var tag = container.nodeName.toLowerCase();
-    context[validateDOMNesting.ancestorInfoContextKey] =
-      validateDOMNesting.updatedAncestorInfo(null, tag, null);
-  }
   var markup = ReactReconciler.mountComponent(
-    componentInstance, rootID, transaction, context
+    componentInstance,
+    rootID,
+    transaction,
+    null,
+    ReactDOMContainerInfo(container),
+    context
   );
   componentInstance._renderedComponent._topLevelWrapper = componentInstance;
   ReactMount._mountImageIntoNode(
@@ -723,17 +698,16 @@ var ReactMount = {
    * @return {string} The "reactRoot" ID of elements rendered within.
    */
   registerContainer: function(container) {
-    var reactRootID = getReactRootID(container);
-    if (reactRootID) {
-      // If one exists, make sure it is a valid "reactRoot" ID.
-      reactRootID = ReactInstanceHandles.getReactRootIDFromNodeID(reactRootID);
-    }
-    if (!reactRootID) {
+    var id = getReactRootID(container);
+    // If one exists, make sure it is a valid "reactRoot" ID.
+    if (!id || id !== ReactInstanceHandles.getReactRootIDFromNodeID(id)) {
       // No valid "reactRoot" ID found, create one.
-      reactRootID = ReactInstanceHandles.createReactRootID();
+      id = ReactInstanceHandles.createReactRootID(
+        ClientReactRootIndex.createReactRootIndex()
+      );
     }
-    containersByReactRootID[reactRootID] = container;
-    return reactRootID;
+    containersByReactRootID[id] = container;
+    return id;
   },
 
   /**
@@ -1065,13 +1039,11 @@ var ReactMount = {
       while (container.lastChild) {
         container.removeChild(container.lastChild);
       }
-      container.appendChild(markup);
+      DOMLazyTree.insertTreeBefore(container, markup, null);
     } else {
       setInnerHTML(container, markup);
     }
   },
-
-  ownerDocumentContextKey: ownerDocumentContextKey,
 
   /**
    * React ID utilities.
@@ -1084,8 +1056,6 @@ var ReactMount = {
   setID: setID,
 
   getNode: getNode,
-
-  getNodeFromInstance: getNodeFromInstance,
 
   isValid: isValid,
 

@@ -357,7 +357,16 @@ describe('ReactDOMSelect', function() {
         <option value="giraffe">A giraffe!</option>
         <option value="gorilla">A gorilla!</option>
       </select>;
+
+    spyOn(console, 'error');
+
     stub = ReactTestUtils.renderIntoDocument(stub);
+
+    expect(console.error.argsForCall.length).toBe(1);
+    expect(console.error.argsForCall[0][0]).toContain(
+      '`valueLink` prop on `select` is deprecated; set `value` and `onChange` instead.'
+    );
+
     var node = ReactDOM.findDOMNode(stub);
 
     expect(node.options[0].selected).toBe(false);  // monkey
@@ -453,5 +462,19 @@ describe('ReactDOMSelect', function() {
     expect(node.options[0].selected).toBe(false);  // monkey
     expect(node.options[1].selected).toBe(false);  // giraffe
     expect(node.options[2].selected).toBe(false);  // gorilla
+  });
+
+  it('should throw warning message if value is null', function() {
+    spyOn(console, 'error');
+
+    ReactTestUtils.renderIntoDocument(<select value={null}><option value="test"/></select>);
+    expect(console.error.argsForCall[0][0]).toContain(
+      '`value` prop on `select` should not be null. ' +
+      'Consider using the empty string to clear the component or `undefined` ' +
+      'for uncontrolled components.'
+    );
+
+    ReactTestUtils.renderIntoDocument(<select value={null}><option value="test"/></select>);
+    expect(console.error.argsForCall.length).toBe(1);
   });
 });

@@ -255,6 +255,8 @@ var ReactMultiChild = {
             child,
             rootID,
             transaction,
+            this,
+            this._nativeContainerInfo,
             context
           );
           child._mountIndex = index++;
@@ -313,7 +315,7 @@ var ReactMultiChild = {
         ReactChildReconciler.unmountChildren(prevChildren);
         for (var name in prevChildren) {
           if (prevChildren.hasOwnProperty(name)) {
-            this._unmountChildByName(prevChildren[name], name);
+            this._unmountChild(prevChildren[name]);
           }
         }
         this.setMarkup(nextMarkup);
@@ -503,6 +505,8 @@ var ReactMultiChild = {
         child,
         rootID,
         transaction,
+        this,
+        this._nativeContainerInfo,
         context
       );
       child._mountIndex = index;

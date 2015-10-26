@@ -254,14 +254,17 @@ describe('ReactDOMInput', function() {
   it('should warn with value and no onChange handler', function() {
     var link = new ReactLink('yolo', mocks.getMockFunction());
     ReactTestUtils.renderIntoDocument(<input type="text" valueLink={link} />);
-    expect(console.error.argsForCall.length).toBe(0);
+    expect(console.error.argsForCall.length).toBe(1);
+    expect(console.error.argsForCall[0][0]).toContain(
+      '`valueLink` prop on `input` is deprecated; set `value` and `onChange` instead.'
+    );
 
     ReactTestUtils.renderIntoDocument(
       <input type="text" value="zoink" onChange={mocks.getMockFunction()} />
     );
-    expect(console.error.argsForCall.length).toBe(0);
-    ReactTestUtils.renderIntoDocument(<input type="text" value="zoink" />);
     expect(console.error.argsForCall.length).toBe(1);
+    ReactTestUtils.renderIntoDocument(<input type="text" value="zoink" />);
+    expect(console.error.argsForCall.length).toBe(2);
   });
 
   it('should warn with value and no onChange handler and readOnly specified', function() {
@@ -274,6 +277,17 @@ describe('ReactDOMInput', function() {
       <input type="text" value="zoink" readOnly={false} />
     );
     expect(console.error.argsForCall.length).toBe(1);
+  });
+
+  it('should have a this value of undefined if bind is not used', function() {
+    var unboundInputOnChange = function() {
+      expect(this).toBe(undefined);
+    };
+
+    var instance = <input type="text" onChange={unboundInputOnChange} />;
+    instance = ReactTestUtils.renderIntoDocument(instance);
+
+    ReactTestUtils.Simulate.change(instance);
   });
 
   it('should throw if both value and valueLink are provided', function() {
@@ -318,7 +332,10 @@ describe('ReactDOMInput', function() {
     var node = document.createElement('div');
     var link = new ReactLink(true, mocks.getMockFunction());
     ReactDOM.render(<input type="checkbox" checkedLink={link} />, node);
-    expect(console.error.argsForCall.length).toBe(0);
+    expect(console.error.argsForCall.length).toBe(1);
+    expect(console.error.argsForCall[0][0]).toContain(
+      '`checkedLink` prop on `input` is deprecated; set `value` and `onChange` instead.'
+    );
 
     ReactTestUtils.renderIntoDocument(
       <input
@@ -327,15 +344,15 @@ describe('ReactDOMInput', function() {
         onChange={mocks.getMockFunction()}
       />
     );
-    expect(console.error.argsForCall.length).toBe(0);
+    expect(console.error.argsForCall.length).toBe(1);
 
     ReactTestUtils.renderIntoDocument(
       <input type="checkbox" checked="false" readOnly={true} />
     );
-    expect(console.error.argsForCall.length).toBe(0);
+    expect(console.error.argsForCall.length).toBe(1);
 
     ReactTestUtils.renderIntoDocument(<input type="checkbox" checked="false" />);
-    expect(console.error.argsForCall.length).toBe(1);
+    expect(console.error.argsForCall.length).toBe(2);
   });
 
   it('should warn with checked and no onChange handler with readOnly specified', function() {
@@ -385,5 +402,17 @@ describe('ReactDOMInput', function() {
     instance =
       <input type="checkbox" checkedLink={link} valueLink={emptyFunction} />;
     expect(() => ReactDOM.render(instance, node)).toThrow();
+  });
+
+  it('should throw warning message if value is null', function() {
+    ReactTestUtils.renderIntoDocument(<input type="text" value={null} />);
+    expect(console.error.argsForCall[0][0]).toContain(
+      '`value` prop on `input` should not be null. ' +
+      'Consider using the empty string to clear the component or `undefined` ' +
+      'for uncontrolled components.'
+    );
+
+    ReactTestUtils.renderIntoDocument(<input type="text" value={null} />);
+    expect(console.error.argsForCall.length).toBe(1);
   });
 });
